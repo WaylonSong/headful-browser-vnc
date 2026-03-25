@@ -1,0 +1,13 @@
+[Unit]
+Description=noVNC web proxy for headful-browser-vnc {{ session }}
+After=network.target
+
+[Service]
+Type=simple
+User={{ user | default('azureuser') }}
+Environment=NOVNC_PORT={{ novnc_port | default(6080) }}
+ExecStart=/usr/local/bin/install_and_run_novnc.sh {{ session }}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
