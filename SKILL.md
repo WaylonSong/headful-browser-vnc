@@ -30,9 +30,9 @@ Runtime files & usage
 
 This section documents each file included in the skill release branch, its purpose, usage examples, preconditions, and relations to other files. All script examples assume you run them from the workspace root unless noted.
 
-- skills/headful-browser-vnc/scripts/INSTALL.sh
+- skills/headful-browser-vnc/scripts/setup.sh
   - Purpose: interactive, documented installer and validator for the skill's runtime dependencies (Xvfb, x11vnc, Chrome/Chromium, node, tooling). Primarily guidance-only: prints distro-aware commands; only runs package-manager operations when explicitly allowed.
-  - Usage: ./skills/headful-browser-vnc/scripts/INSTALL.sh [--check-only] [--auto-install] [--yes] [--set-password]
+  - Usage: ./skills/headful-browser-vnc/scripts/setup.sh [--check-only] [--auto-install] [--yes] [--set-password]
   - Preconditions: network access to package repositories; sudo available for host installs (not required inside containers when running as root). When running inside a container, auto-installs require either root or CONTAINER_AUTO_OK=true.
   - Relations: updates/creates skills/headful-browser-vnc/.env; generates VNC passfiles via vncpasswd when available; consults templates/ for service unit guidance.
 
@@ -69,8 +69,8 @@ This section documents each file included in the skill release branch, its purpo
   - Combined usage: start_vnc.sh <id> → start_chrome_debug.sh <id> → operator attaches via VNC → operator interacts → export_page.sh/export_cookies.sh → stop_vnc.sh <id>
 
 - skills/headful-browser-vnc/docker/
-  - Purpose: reference Dockerfile, entrypoint, and docker-compose.yml for running the skill inside a container. These are examples and not authoritative images for production use.
-  - Recommendation: For reproducibility and security, build dependencies into the image (Dockerfile) rather than relying on runtime package installs inside a running container. If you must allow in-container auto-installs, see INSTALL.sh gating (CONTAINER_AUTO_OK and container_auto_allowed()).
+  - Purpose: reference docker/ directory containing entrypoint and docker-compose.yml plus an embedded Dockerfile in README.docker.md for reproducible builds. ClawHub does not accept Dockerfile uploads, so the Dockerfile content has been included in skills/headful-browser-vnc/README.docker.md as a code block.
+  - Recommendation: For reproducibility and security, build dependencies into the image (Dockerfile) rather than relying on runtime package installs inside a running container. If you must allow in-container auto-installs, see setup.sh gating (CONTAINER_AUTO_OK and container_auto_allowed()).
 
 - skills/headful-browser-vnc/templates/
   - Purpose: Jinja2-style templates for systemd unit files (x11vnc/noVNC). Use them as references; deploying them on a host requires sudo and careful service permissions.
@@ -83,7 +83,7 @@ Configuration (.env)
 
 Place a skill-local skills/headful-browser-vnc/.env (chmod 600) to persist runtime defaults. Key fields:
 
-- VNC_PASSFILE: path to passfile (e.g. /tmp/vnc/passwd)
+- VNC_PASSFILE: path to passfile (e.g. /home/user/.vnc/passwd or ./vnc_passwd)
 - VNC_PORT: optional explicit TCP port to bind x11vnc (if omitted the script will report the actual port in use)
 - VNC_IMPLEMENTATION: auto|tigervnc|tightvnc|realvnc
 - VNC_DISPLAY: X display (default :99)
@@ -93,7 +93,7 @@ Place a skill-local skills/headful-browser-vnc/.env (chmod 600) to persist runti
 
 Install and dependencies
 
-- INSTALL.sh contains interactive guidance and optional prompts for installing Chrome, node, Playwright, and VNC helper tools. The installer will not run sudo operations without explicit consent.
+- setup.sh contains interactive guidance and optional prompts for installing Chrome, node, Playwright, and VNC helper tools. The installer will not run sudo operations without explicit consent.
 - Programmatic export paths prefer Node + Playwright; a Python fallback is available but optional.
 
 Auto-install behaviour and safety (enforced)
@@ -122,7 +122,7 @@ Testing
 
 Support and contribution
 
-- The skill is maintained in this workspace. When contributing changes, follow the repository conventions: create backups before modifying INSTALL.sh or start/stop scripts, run bash -n for syntax validation, and preserve audit logs and artifacts.
+- The skill is maintained in this workspace. When contributing changes, follow the repository conventions: create backups before modifying setup.sh or start/stop scripts, run bash -n for syntax validation, and preserve audit logs and artifacts.
 
 License
 
@@ -132,7 +132,7 @@ Example: safe auto-install run
 
 To allow the installer to perform distro package manager actions automatically, run with explicit --auto-install and be prepared to type the full confirmation word. Example:
 
-  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/INSTALL.sh --auto-install
+  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/setup.sh --auto-install
 
 The script will: (1) detect your distro and print the exact command it plans to run; (2) ask for a normal y/N confirmation; (3) print the command and require you to type the exact word yes to proceed; (4) only then execute the command.
 
@@ -142,9 +142,9 @@ If you prefer to always review and run commands manually, omit --auto-install an
 
 Short example run transcript (what prompts look like)
 
-Below is a short, representative transcript demonstrating the installer flow when a few components are missing and the operator chooses the manual path (no auto-install). Prompts shown are exact prompts produced by the current INSTALL.sh.
+Below is a short, representative transcript demonstrating the installer flow when a few components are missing and the operator chooses the manual path (no auto-install). Prompts shown are exact prompts produced by the current setup.sh.
 
-$ ./skills/headful-browser-vnc/scripts/INSTALL.sh
+$ ./skills/headful-browser-vnc/scripts/setup.sh
 Platform install hints (guidance-only — these commands will NOT be run automatically):
 
 Debian / Ubuntu (apt):

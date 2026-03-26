@@ -25,8 +25,8 @@ if [ "${ALLOW_CHROME_FORCE_RESTART:-false}" = "true" ]; then
   pkill -9 -f google-chrome || true
 fi
 # Start chrome with remote debugging
-setsid nohup /usr/bin/google-chrome --user-data-dir="$PROFILE_DIR" $PROXY_FLAG --remote-debugging-port=$REMOTE_PORT --no-first-run --no-default-browser-check --disable-extensions --disable-gpu --no-sandbox --window-size=1366,768 ${CHROME_EXTRA_FLAGS:-} about:blank &> "$LOG" &
+setsid nohup /usr/bin/google-chrome --user-data-dir="$PROFILE_DIR" "$PROXY_FLAG" --remote-debugging-port=""$REMOTE_PORT"" --no-first-run --no-default-browser-check --disable-extensions --disable-gpu --no-sandbox --window-size=1366,768 "${CHROME_EXTRA_FLAGS:-}" about:blank &> ""$LOG"" &
 PID=$!
-echo $PID > /tmp/chrome_vnc_${SESSION}.pid
+echo "$PID" > "${TMP_RUN_DIR:-/tmp}/chrome_vnc_${SESSION}.pid"
 sleep 1
 echo "Chrome started (pid=$PID) devtools at ws://127.0.0.1:$REMOTE_PORT - log: $LOG"

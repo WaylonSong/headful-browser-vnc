@@ -1,3 +1,4 @@
+SKILL_DIR=/
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -24,9 +25,9 @@ if [ -f "/.dockerenv" ] || (grep -qaE "docker|containerd|kubepods" /proc/1/cgrou
   PKG_PREFIX=""
 fi
 if [ "${IS_CONTAINER}" = true ]; then
-  echo "Detected containerized environment: package-manager commands will run without sudo by default" >>log "2"Detected containerized environment: package-manager commands will run without sudo by default"2
+echo "Detected containerized environment: package-manager commands will run without sudo by default" >&2
 else
-  echo "Detected host environment: package-manager commands will use sudo when needed" >>log "2"Detected host environment: package-manager commands will use sudo when needed"2
+echo "Detected host environment: package-manager commands will use sudo when needed" >&2
 fi
 
 # ==============================================================================
@@ -38,7 +39,7 @@ log() { echo "$*" >&2; }
 ask_confirm() {
   local prompt="$1"
   if [ "$ASSUME_YES" = true ]; then return 0; fi
-  read -p "$prompt (y/N) " yn
+  read -r -p "$prompt (y/N) " yn
   [[ "$yn" = "y" || "$yn" = "Y" ]]
 }
 
@@ -165,10 +166,10 @@ generate_passfile_auto() {
   if has_cmd vncpasswd; then
     log "Tool 'vncpasswd' found. Preparing automated generation..."
     echo -n "Enter VNC password (hidden): " >&2
-    read -s PW || { log "Error reading password."; return 1; }
+    read -r -s PW || { log "Error reading password."; return 1; }
     echo >&2
     echo -n "Confirm password: " >&2
-    read -s PW_CONFIRM || { log "Error reading confirmation."; return 1; }
+    read -r -s PW_CONFIRM || { log "Error reading confirmation."; return 1; }
     echo >&2
     if [ "$PW" != "$PW_CONFIRM" ] || [ -z "$PW" ]; then
       log "Passwords mismatch or empty. Aborting."
@@ -332,12 +333,12 @@ run_installer() {
         log "Suggested command: $cmd_xvfb"
         if ask_confirm "Run the above command to install Xvfb?"; then
           printf "About to run:\n%s\n" "$cmd_xvfb"
-          read -p "Type the exact word 'yes' to proceed: " CONFIRM
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
           if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
             eval "$cmd_xvfb" || log "Command returned non-zero status"
           else
             log "Skipped automatic install. Please run the printed command manually."
-            read -p "Press Enter when done..." _ || true
+            read -r -p "Press Enter when done..." _ || true
           fi
         fi
         ;;
@@ -345,7 +346,7 @@ run_installer() {
         log "Suggested command: $cmd_x11vnc"
         if ask_confirm "Run the above command to install x11vnc?"; then
           printf "About to run:\n%s\n" "$cmd_x11vnc"
-          read -p "Type the exact word 'yes' to proceed: " CONFIRM
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
           if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
             eval "$cmd_x11vnc" || log "Command returned non-zero status"
           else
@@ -354,7 +355,7 @@ run_installer() {
         fi
         # After possible install attempt, set VNC port/env and password
         local def_port=${VNC_PORT:-5901}
-        read -p "VNC Port [$def_port]: " port_input
+        read -r -p "VNC Port [$def_port]: " port_input
         local final_port=${port_input:-$def_port}
         update_env_var "VNC_PORT" "$final_port"
         local PF
@@ -367,7 +368,7 @@ run_installer() {
         log "Suggested command: $cmd_chrome"
         if ask_confirm "Install Chrome/Chromium using suggested command?"; then
           printf "About to run:\n%s\n" "$cmd_chrome"
-          read -p "Type the exact word 'yes' to proceed: " CONFIRM
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
           if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
             eval "$cmd_chrome" || log "Command returned non-zero status"
           else
@@ -379,7 +380,7 @@ run_installer() {
         log "Suggested command: $cmd_node"
         if ask_confirm "Install Node.js v22+ using suggested command?"; then
           printf "About to run:\n%s\n" "$cmd_node"
-          read -p "Type the exact word 'yes' to proceed: " CONFIRM
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
           if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
             eval "$cmd_node" || log "Command returned non-zero status"
           else
@@ -432,16 +433,16 @@ Options:
 
 Examples:
   # Run checks only (no installs)
-  ./skills/headful-browser-vnc/scripts/INSTALL.sh --check-only
+  ./skills/headful-browser-vnc/scripts/setup.sh --check-only
 
   # Interactively set up a VNC password only
-  ./skills/headful-browser-vnc/scripts/INSTALL.sh --set-password
+  ./skills/headful-browser-vnc/scripts/setup.sh --set-password
 
   # Print distro-specific install hints (manual mode)
-  ./skills/headful-browser-vnc/scripts/INSTALL.sh
+  ./skills/headful-browser-vnc/scripts/setup.sh
 
   # Allow the script to execute package-manager commands (requires typing exact 'yes' when prompted)
-  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/INSTALL.sh --auto-install
+  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/setup.sh --auto-install
 
 Safety:
   The installer will NOT run privileged package manager commands unless both --auto-install is provided and you explicitly type the full word 'yes' when prompted. By default the script only prints distro-appropriate install commands for manual execution.

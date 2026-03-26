@@ -28,7 +28,7 @@ EXPOSE 5900 5901 9222 6080
 ENV VNC_DISPLAY=:99 \
     VNC_RESOLUTION=1366x768 \
     REMOTE_DEBUG_PORT=9222 \
-    VNC_PASSFILE=/tmp/vnc/passwd \
+    VNC_PASSFILE=/root/.vnc/passwd \
     VNC_IMPLEMENTATION=auto
 
 # Entrypoint: start VNC and keep container running; user overrides recommended via docker-compose

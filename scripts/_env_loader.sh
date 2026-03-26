@@ -1,3 +1,4 @@
+SKILL_DIR=/
 #!/usr/bin/env bash
 # load .env if present (non-destructive). Exports variables to child processes.
 # Prefer a .env colocated with the skill scripts directory; fall back to parent for backward-compat.
