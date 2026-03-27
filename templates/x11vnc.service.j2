@@ -1,0 +1,13 @@
+[Unit]
+Description=Headful Browser VNC session {{ session }}
+After=network.target
+
+[Service]
+Type=simple
+User={{ user | default('azureuser') }}
+Environment=DISPLAY={{ display | default(':99') }}
+ExecStart=/usr/local/bin/start_vnc.sh {{ session }} {{ display }} {{ resolution }}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

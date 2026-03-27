@@ -1,0 +1,8 @@
+# Ignore local environment and backups
+.env
+backups/
+venv/
+__pycache__/
+*.pyc
+logs/
+reports/

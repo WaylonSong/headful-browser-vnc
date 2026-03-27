@@ -1,3 +1,4 @@
+SKILL_DIR=/
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -15,6 +16,20 @@ if [ ! -f "$ENV_FILE" ]; then
   ENV_FILE="$(dirname "$SCRIPT_DIR")/.env"
 fi
 
+# Detect containerized environment (Docker / containerd) and set package-prefix accordingly
+IS_CONTAINER=false
+PKG_PREFIX="sudo "
+# Detect common container indicators
+if [ -f "/.dockerenv" ] || (grep -qaE "docker|containerd|kubepods" /proc/1/cgroup 2>/dev/null); then
+  IS_CONTAINER=true
+  PKG_PREFIX=""
+fi
+if [ "${IS_CONTAINER}" = true ]; then
+echo "Detected containerized environment: package-manager commands will run without sudo by default" >&2
+else
+echo "Detected host environment: package-manager commands will use sudo when needed" >&2
+fi
+
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
@@ -24,7 +39,7 @@ log() { echo "$*" >&2; }
 ask_confirm() {
   local prompt="$1"
   if [ "$ASSUME_YES" = true ]; then return 0; fi
-  read -p "$prompt (y/N) " yn
+  read -r -p "$prompt (y/N) " yn
   [[ "$yn" = "y" || "$yn" = "Y" ]]
 }
 
@@ -81,25 +96,25 @@ print_install_hints() {
 Platform install hints (guidance-only — these commands will NOT be run automatically):
 
 Debian / Ubuntu (apt):
-  sudo apt-get update
-  sudo apt-get install -y --no-install-recommends \
+  apt-get update
+  apt-get install -y --no-install-recommends \
     xvfb x11vnc fluxbox x11-utils tigervnc-standalone-server tightvnc-tools \
     fonts-noto-cjk fontconfig chromium-browser google-chrome-stable \
     nodejs npm python3-pip
 
 RHEL / CentOS / Alma (dnf/yum):
   # enable EPEL if needed
-  sudo dnf install -y epel-release || sudo yum install -y epel-release
-  sudo dnf install -y Xvfb x11vnc fluxbox xorg-x11-utils tigervnc-server tigervnc-server-module \
+  dnf install -y epel-release || yum install -y epel-release
+  dnf install -y Xvfb x11vnc fluxbox xorg-x11-utils tigervnc-server tigervnc-server-module \
     fontconfig freetype
 
 Arch Linux (pacman):
-  sudo pacman -Syu --noconfirm xorg-server-xvfb x11vnc fluxbox xorg-x11-utils \
+  pacman -Syu --noconfirm xorg-server-xvfb x11vnc fluxbox xorg-x11-utils \
     chromium nodejs npm python-pip noto-fonts-cjk
 
 Notes:
 - Package names vary by distro and release; adapt the commands accordingly.
-- Prefer google-chrome-stable (.deb) on Debian/Ubuntu for automation (non-snap).
+- Prefer google-chrome-stable (.deb) on Debian/Ubuntu for automation (non-snap). In container images prefer adding it in the Dockerfile.
 - Prefer vncpasswd (from tightvnc-tools / tigervnc) to generate rfbauth non-interactively.
 - These are guidance commands only; the installer will present them and ask before running privileged commands.
 EOF
@@ -151,10 +166,10 @@ generate_passfile_auto() {
   if has_cmd vncpasswd; then
     log "Tool 'vncpasswd' found. Preparing automated generation..."
     echo -n "Enter VNC password (hidden): " >&2
-    read -s PW || { log "Error reading password."; return 1; }
+    read -r -s PW || { log "Error reading password."; return 1; }
     echo >&2
     echo -n "Confirm password: " >&2
-    read -s PW_CONFIRM || { log "Error reading confirmation."; return 1; }
+    read -r -s PW_CONFIRM || { log "Error reading confirmation."; return 1; }
     echo >&2
     if [ "$PW" != "$PW_CONFIRM" ] || [ -z "$PW" ]; then
       log "Passwords mismatch or empty. Aborting."
@@ -169,6 +184,8 @@ generate_passfile_auto() {
       rm -f "$PF" || true
     fi
   fi
+
+
 
   return 1
 }
@@ -243,13 +260,57 @@ run_check_only() {
 
 run_installer() {
   log "Starting interactive installation..."
-  has_cmd apt-get || { log "Warning: apt-get not found. INSTALL hints for other distros will be displayed."; }
 
+  # Detect distro
+  local os_id="unknown"
+  if [ -f /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release 2>/dev/null || true
+    os_id="${ID:-unknown}"
+  fi
+  os_id="${os_id,,}"
+
+  # Build distro-specific install commands (strings only; will not run unless explicitly confirmed).
+  local cmd_xvfb cmd_x11vnc cmd_chrome cmd_node
+  case "${os_id}" in
+    ubuntu|debian)
+      cmd_xvfb="${PKG_PREFIX}apt-get update && ${PKG_PREFIX}apt-get install -y xvfb"
+      cmd_x11vnc="${PKG_PREFIX}apt-get install -y x11vnc"
+      cmd_chrome="wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && ${PKG_PREFIX}apt-get install -y /tmp/google-chrome.deb || true"
+      cmd_node="curl -fsSL https://deb.nodesource.com/setup_22.x | ${PKG_PREFIX}-E bash - && ${PKG_PREFIX}apt-get install -y nodejs"
+      ;;
+    rhel|centos|almalinux|rocky|fedora)
+      cmd_xvfb="${PKG_PREFIX}dnf install -y xorg-x11-server-Xvfb || ${PKG_PREFIX}yum install -y xorg-x11-server-Xvfb"
+      cmd_x11vnc="${PKG_PREFIX}dnf install -y x11vnc || ${PKG_PREFIX}yum install -y x11vnc"
+      cmd_chrome="echo 'Install Google Chrome RPM via vendor package (manual step)'"
+      cmd_node="echo 'Use Nodesource or dnf module for Node.js >=22 (manual)'
+      "
+      ;;
+    arch)
+      cmd_xvfb="${PKG_PREFIX}pacman -Syu --noconfirm xorg-server-xvfb"
+      cmd_x11vnc="${PKG_PREFIX}pacman -S --noconfirm x11vnc"
+      cmd_chrome="${PKG_PREFIX}pacman -S --noconfirm chromium || true"
+      cmd_node="${PKG_PREFIX}pacman -S --noconfirm nodejs npm"
+      ;;
+    alpine)
+      cmd_xvfb="${PKG_PREFIX}apk add --no-cache xvfb"
+      cmd_x11vnc="${PKG_PREFIX}apk add --no-cache x11vnc"
+      cmd_chrome="echo 'Google Chrome not available on Alpine; consider using chromium from community'"
+      cmd_node="${PKG_PREFIX}apk add --no-cache nodejs npm"
+      ;;
+    *)
+      cmd_xvfb="echo 'Install Xvfb via your distro package manager'"
+      cmd_x11vnc="echo 'Install x11vnc via your distro package manager'"
+      cmd_chrome="echo 'Install Google Chrome or Chromium manually'"
+      cmd_node="echo 'Install Node.js v22+ manually'"
+      ;;
+  esac
+
+  # Determine missing components
   local missing=()
   has_cmd Xvfb || missing+=("Xvfb")
   has_cmd x11vnc || missing+=("x11vnc")
-  if has_cmd google-chrome || has_cmd chromium-browser; then :; else missing+=("chrome"); fi
-
+  if has_cmd google-chrome || has_cmd chromium-browser || has_cmd chromium; then :; else missing+=("chrome"); fi
   if ! has_cmd node; then
     if [ -s "$HOME/.nvm/nvm.sh" ]; then
       . "$HOME/.nvm/nvm.sh"
@@ -258,13 +319,10 @@ run_installer() {
       missing+=("node")
     fi
   fi
-
   if ! is_valid_passfile; then missing+=("VNC_PASSFILE"); fi
-  if [ ! -f "$ENV_FILE" ]; then
-    if [[ ! " ${missing[*]} " =~ " VNC_PASSFILE " ]]; then missing+=(".env"); fi
-  fi
+  if [ ! -f "$ENV_FILE" ]; then missing+=(".env"); fi
 
-  if [ ${#missing[@]} -eq 0 ]; then log "All components already present."; exit 0; fi
+  if [ ${#missing[@]} -eq 0 ]; then log "All components already present."; return 0; fi
 
   print_install_hints
 
@@ -272,46 +330,63 @@ run_installer() {
     log "--- Handling missing: $comp ---"
     case "$comp" in
       Xvfb)
-        if ask_confirm "Install Xvfb?"; then
-          sudo apt-get update && sudo apt-get install -y xvfb || true
-        else
-          log "Skip. Manual: sudo apt-get install xvfb"; read -p "Press Enter when done..." _
+        log "Suggested command: $cmd_xvfb"
+        if ask_confirm "Run the above command to install Xvfb?"; then
+          printf "About to run:\n%s\n" "$cmd_xvfb"
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
+          if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
+            eval "$cmd_xvfb" || log "Command returned non-zero status"
+          else
+            log "Skipped automatic install. Please run the printed command manually."
+            read -r -p "Press Enter when done..." _ || true
+          fi
         fi
         ;;
       x11vnc)
-        if ask_confirm "Install x11vnc?"; then
-          sudo apt-get update && sudo apt-get install -y x11vnc || true
-        else
-          log "Skip. Manual: sudo apt-get install x11vnc"; read -p "Press Enter when done..." _
+        log "Suggested command: $cmd_x11vnc"
+        if ask_confirm "Run the above command to install x11vnc?"; then
+          printf "About to run:\n%s\n" "$cmd_x11vnc"
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
+          if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
+            eval "$cmd_x11vnc" || log "Command returned non-zero status"
+          else
+            log "Skipped automatic install. Please run the printed command manually."
+          fi
         fi
-
+        # After possible install attempt, set VNC port/env and password
         local def_port=${VNC_PORT:-5901}
-        read -p "VNC Port [$def_port]: " port_input
+        read -r -p "VNC Port [$def_port]: " port_input
         local final_port=${port_input:-$def_port}
         update_env_var "VNC_PORT" "$final_port"
-
         local PF
         PF=$(resolve_passfile) || { log "Skipping password setup due to path error."; continue; }
-
         if ! generate_passfile_auto "$PF"; then
           if ask_confirm "Run interactive 'x11vnc -storepasswd'?"; then run_interactive_store "$PF"; fi
         fi
         ;;
       chrome)
-        log "Select Chrome version:"; log "1) Google Chrome (Recommended)"; log "2) Chromium (Snap)"; log "3) Skip"
-        read -p "Choice [1-3] (default 1): " choice
-        case "${choice:-1}" in
-          2) sudo snap install chromium || true ;;
-          3) log "Skipped." ;;
-          *)
-            wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add - || true
-            echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list || true
-            sudo apt-get update && sudo apt-get install -y google-chrome-stable || true
-            ;;
-        esac
+        log "Suggested command: $cmd_chrome"
+        if ask_confirm "Install Chrome/Chromium using suggested command?"; then
+          printf "About to run:\n%s\n" "$cmd_chrome"
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
+          if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
+            eval "$cmd_chrome" || log "Command returned non-zero status"
+          else
+            log "Skipped automatic install. Please run the printed command manually."
+          fi
+        fi
         ;;
       node)
-        log "Please install Node.js v22+ manually."; log "Cmd: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"; read -p "Press Enter when done..." _
+        log "Suggested command: $cmd_node"
+        if ask_confirm "Install Node.js v22+ using suggested command?"; then
+          printf "About to run:\n%s\n" "$cmd_node"
+          read -r -p "Type the exact word 'yes' to proceed: " CONFIRM
+          if [ "$CONFIRM" = "yes" ] && [ "${AUTO_INSTALL:-false}" = "true" ]; then
+            eval "$cmd_node" || log "Command returned non-zero status"
+          else
+            log "Skipped automatic install. Please run the printed command manually."
+          fi
+        fi
         ;;
       .env)
         if ask_confirm "Create template .env?"; then
@@ -344,6 +419,37 @@ EOF
   log "Installation flow complete."
 }
 
+
+show_help() {
+  cat <<'HELP'
+Usage: bash [options]
+
+Options:
+  --check-only       Run non-destructive checks for required tools and config
+  --yes              Assume yes for confirmation prompts (non-destructive only)
+  --set-password     Run only the VNC password setup flow (interactive)
+  --auto-install     Allow the installer to execute distro package manager commands (requires typing 'yes' at prompt)
+  --help             Show this help text
+
+Examples:
+  # Run checks only (no installs)
+  ./skills/headful-browser-vnc/scripts/setup.sh --check-only
+
+  # Interactively set up a VNC password only
+  ./skills/headful-browser-vnc/scripts/setup.sh --set-password
+
+  # Print distro-specific install hints (manual mode)
+  ./skills/headful-browser-vnc/scripts/setup.sh
+
+  # Allow the script to execute package-manager commands (requires typing exact 'yes' when prompted)
+  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/setup.sh --auto-install
+
+Safety:
+  The installer will NOT run privileged package manager commands unless both --auto-install is provided and you explicitly type the full word 'yes' when prompted. By default the script only prints distro-appropriate install commands for manual execution.
+HELP
+}
+
+
 # ==============================================================================
 # Entry Point
 # ==============================================================================
@@ -352,6 +458,8 @@ for arg in "$@"; do
     --check-only) CHECK_ONLY=true ;;
     --yes) ASSUME_YES=true ;;
     --set-password) SET_PASSWORD_ONLY=true ;;
+    --auto-install) AUTO_INSTALL=true ;;
+    --help) show_help; exit 0 ;;
   esac
 done
 

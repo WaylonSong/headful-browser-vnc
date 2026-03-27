@@ -26,35 +26,64 @@ Supported VNC implementations
 
 - The skill supports multiple VNC backends; behavior is controlled via the skill-local .env file (VNC_IMPLEMENTATION): auto (default), tigervnc, tightvnc, realvnc. When possible the skill prefers non-interactive rfbauth generation via vncpasswd; when unavailable it prompts the operator and documents fallback behavior.
 
-Operational interface (scripts)
+Runtime files & usage
 
-Scripts are located in skills/headful-browser-vnc/scripts/ and provide a concise, script-level interface for integrators and operators.
+This section documents each file included in the skill release branch, its purpose, usage examples, preconditions, and relations to other files. All script examples assume you run them from the workspace root unless noted.
 
-- start_vnc.sh <session_id> [display=:99] [widthxheight]
-  Launch Xvfb, window manager (optional), and x11vnc for an interactive session. Prints a one-line summary of the actual VNC listening port after startup.
+- skills/headful-browser-vnc/scripts/setup.sh
+  - Purpose: interactive, documented installer and validator for the skill's runtime dependencies (Xvfb, x11vnc, Chrome/Chromium, node, tooling). Primarily guidance-only: prints distro-aware commands; only runs package-manager operations when explicitly allowed.
+  - Usage: ./skills/headful-browser-vnc/scripts/setup.sh [--check-only] [--auto-install] [--yes] [--set-password]
+  - Preconditions: network access to package repositories; sudo available for host installs (not required inside containers when running as root). When running inside a container, auto-installs require either root or CONTAINER_AUTO_OK=true.
+  - Relations: updates/creates skills/headful-browser-vnc/.env; generates VNC passfiles via vncpasswd when available; consults templates/ for service unit guidance.
 
-- stop_vnc.sh <session_id> [display=:99]
-  Stop the x11vnc/Xvfb session associated with the session id.
+- skills/headful-browser-vnc/scripts/start_vnc.sh
+  - Purpose: start an Xvfb display, optional window manager, and x11vnc to expose the display. Emits a one-line summary with the VNC port and display id.
+  - Usage: skills/headful-browser-vnc/scripts/start_vnc.sh <session_id> [--display=:99] [--resolution=1366x768] [--port=5901]
+  - Preconditions: Xvfb and x11vnc installed (or available in Docker image), VNC_PASSFILE permission 600 if provided.
+  - Relations: start_vnc.sh creates the DISPLAY and user-data directory used by start_chrome_debug.sh; stop_vnc.sh undoes the session.
 
-- start_chrome_debug.sh <session_id> [--proxy=...] [remote-debug-port]
-  Launch a headful Chrome instance attached to the session's DISPLAY and with a dedicated user-data directory. Sets up Chrome remote debugging for programmatic attachment.
+- skills/headful-browser-vnc/scripts/stop_vnc.sh
+  - Purpose: stop and clean up a running VNC/Xvfb session previously started by start_vnc.sh.
+  - Usage: skills/headful-browser-vnc/scripts/stop_vnc.sh <session_id> [--display=:99]
+  - Preconditions: session id matches an active session created by start_vnc.sh.
 
-- export_page.sh <session_id> <url> [devtools-port]
-  Use Chrome CDP to load the URL in the running headful Chrome and export rendered outerHTML and a full-page screenshot.
+- skills/headful-browser-vnc/scripts/start_chrome_debug.sh
+  - Purpose: launch a headful Chrome/Chromium instance attached to a session DISPLAY with a dedicated user-data dir and remote-debugging port for CDP access.
+  - Usage: skills/headful-browser-vnc/scripts/start_chrome_debug.sh <session_id> [--proxy=http://...] [--remote-debug-port=9222]
+  - Preconditions: Chrome/Chromium binary available and readable; DISPLAY is set (start_vnc.sh must have run); user-data directory writable by the process owner.
+  - Relations: other scripts (export_page.sh, export_cookies.sh) connect to the remote-debugging port started by this script.
 
-- export_cookies.sh <session_id> [devtools-port]
-  Export cookies from the running Chrome instance via CDP.
+- skills/headful-browser-vnc/scripts/export_page.sh
+  - Purpose: instruct Chrome to load a URL and export rendered outerHTML and a full-page screenshot for later analysis.
+  - Usage: skills/headful-browser-vnc/scripts/export_page.sh <session_id> <url> [--devtools-port=9222]
+  - Preconditions: headful Chrome with remote-debugging port active and reachable (start_chrome_debug.sh).
 
-Usage patterns
+- skills/headful-browser-vnc/scripts/export_cookies.sh
+  - Purpose: export cookies from a running Chrome instance via the Chrome DevTools Protocol.
+  - Usage: skills/headful-browser-vnc/scripts/export_cookies.sh <session_id> [--devtools-port=9222]
 
-- Manual recovery / investigation: operators can start a session, attach via VNC/noVNC, perform manual remediation (solve CAPTCHA, authenticate), then call export_page.sh/export_cookies.sh to capture artifacts for automated pipelines.
-- One-by-one deep retry: the recommended debugging workflow is to run single-item retries through the headful path (start session → run Chrome → escalate to operator if needed → capture artifacts → record comparison samples). This reduces WAF/anti-bot escalation caused by high concurrency and preserves reproducible debugging traces.
+- skills/headful-browser-vnc/scripts/export_page.sh, export_cookies.sh, export_cookies.sh
+  - Note: these export helpers are designed to be idempotent and safe to run after manual operator interventions. They place artifacts into out/<session_id>/ with restrictive permissions.
+
+- skills/headful-browser-vnc/scripts/start_chrome_debug.sh and start_vnc.sh
+  - Combined usage: start_vnc.sh <id> → start_chrome_debug.sh <id> → operator attaches via VNC → operator interacts → export_page.sh/export_cookies.sh → stop_vnc.sh <id>
+
+- skills/headful-browser-vnc/docker/
+  - Purpose: reference docker/ directory containing entrypoint and docker-compose.yml plus an embedded Dockerfile in README.docker.md for reproducible builds. ClawHub does not accept Dockerfile uploads, so the Dockerfile content has been included in skills/headful-browser-vnc/README.docker.md as a code block.
+  - Recommendation: For reproducibility and security, build dependencies into the image (Dockerfile) rather than relying on runtime package installs inside a running container. If you must allow in-container auto-installs, see setup.sh gating (CONTAINER_AUTO_OK and container_auto_allowed()).
+
+- skills/headful-browser-vnc/templates/
+  - Purpose: Jinja2-style templates for systemd unit files (x11vnc/noVNC). Use them as references; deploying them on a host requires sudo and careful service permissions.
+
+- skills/headful-browser-vnc/tests/smoke_test.sh
+  - Purpose: non-privileged smoke test exercising start → launch → export → cleanup sequence to validate runtime behavior in CI-friendly environments.
+  - Usage: ./skills/headful-browser-vnc/tests/smoke_test.sh
 
 Configuration (.env)
 
 Place a skill-local skills/headful-browser-vnc/.env (chmod 600) to persist runtime defaults. Key fields:
 
-- VNC_PASSFILE: path to passfile (e.g. /tmp/vnc/passwd)
+- VNC_PASSFILE: path to passfile (e.g. /home/user/.vnc/passwd or ./vnc_passwd)
 - VNC_PORT: optional explicit TCP port to bind x11vnc (if omitted the script will report the actual port in use)
 - VNC_IMPLEMENTATION: auto|tigervnc|tightvnc|realvnc
 - VNC_DISPLAY: X display (default :99)
@@ -64,15 +93,17 @@ Place a skill-local skills/headful-browser-vnc/.env (chmod 600) to persist runti
 
 Install and dependencies
 
-- INSTALL.sh contains interactive guidance and optional prompts for installing Chrome, node, Playwright, and VNC helper tools. The installer will not run sudo operations without explicit consent.
+- setup.sh contains interactive guidance and optional prompts for installing Chrome, node, Playwright, and VNC helper tools. The installer will not run sudo operations without explicit consent.
 - Programmatic export paths prefer Node + Playwright; a Python fallback is available but optional.
 
-Auto-install behaviour and safety (new)
+Auto-install behaviour and safety (enforced)
 
-- The installer supports an optional auto-install path but it is gated behind two explicit confirmations to avoid accidental privileged operations:
-  - CLI flag: --auto-install (sets an internal AUTO_INSTALL=true for the current run).
-  - Runtime confirmation: when the installer proposes a distro-specific command it will first ask for confirmation via the usual prompt, then it will print the exact command and require the operator to type the full word yes (not y). Only if both confirmations are provided will the installer execute the command.
-- Default behavior remains conservative: by default the installer only prints distro-appropriate install commands and waits for the operator to run them manually. If you prefer to never allow automatic installs, run INSTALL.sh without --auto-install.
+- The installer supports an optional auto-install path but it is gated behind explicit confirmations and container-aware checks:
+  - CLI flag: --auto-install (sets AUTO_INSTALL=true for the run).
+  - Runtime confirmation: when the installer proposes a distro-specific command it will first ask for a y/N confirmation, then print the exact command and require the operator to type the full word yes (not y). Only if both confirmations are provided will the installer execute the command.
+  - Container extra gate: inside a detected container (/.dockerenv or /proc/1/cgroup contains docker/containerd/kubepods), automatic package-manager operations will only run if the process is root (id -u == 0) or if CONTAINER_AUTO_OK=true.
+
+Default behaviour remains conservative: without --auto-install the installer only prints distro-appropriate commands and will not run package-manager commands automatically.
 
 Templates and integration
 
@@ -91,44 +122,29 @@ Testing
 
 Support and contribution
 
-- The skill is maintained in this workspace. When contributing changes, follow the repository conventions: create backups before modifying INSTALL.sh or start/stop scripts, run bash -n for syntax validation, and preserve audit logs and artifacts.
+- The skill is maintained in this workspace. When contributing changes, follow the repository conventions: create backups before modifying setup.sh or start/stop scripts, run bash -n for syntax validation, and preserve audit logs and artifacts.
 
 License
 
 - Include an appropriate LICENSE file when publishing (e.g., MIT). Update author/maintainer fields in SKILL.md prior to external publication.
 
-Portability and supported environments
-
-This skill is designed primarily for Linux environments (Debian/Ubuntu and comparable distributions). Two supported deployment targets are described below:
-
-- Native Linux: The scripts and INSTALL.sh provide distro-specific guidance (apt/dnf/pacman). The runtime contract expects Xvfb, x11vnc, a VNC passfile, and a headful Chrome/Chromium binary. Systemd units (templates/x11vnc.service.j2) are provided for persistent deployments.
-
-- Docker: To maximise portability across hosts, a Docker reference image and docker-compose example are provided in the docker/ directory. The container bundles Xvfb, x11vnc, Chromium, and helper scripts so the same skill can run consistently on different hosts that support Docker.
-
-Notes on other OSes
-
-- macOS and Windows can run headful Chrome, but lack a native Xvfb/X11 stack and differ in VNC tooling and service management. For portability it is recommended to run this skill inside a Linux VM or Docker container on those platforms rather than attempt a full native port.
-
-If you want, I can (1) create a hardened Docker image (smaller base, non-root user, Google Chrome .deb) — reply make-docker-refine, or (2) extend INSTALL.sh with more distro branches — reply linux-harden.
-
 Example: safe auto-install run
 
 To allow the installer to perform distro package manager actions automatically, run with explicit --auto-install and be prepared to type the full confirmation word. Example:
 
-  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/INSTALL.sh --auto-install
+  AUTO_INSTALL=true ./skills/headful-browser-vnc/scripts/setup.sh --auto-install
 
 The script will: (1) detect your distro and print the exact command it plans to run; (2) ask for a normal y/N confirmation; (3) print the command and require you to type the exact word yes to proceed; (4) only then execute the command.
 
 If you prefer to always review and run commands manually, omit --auto-install and the script will only print distro-appropriate commands for you to run yourself.
 
-
 ---
 
 Short example run transcript (what prompts look like)
 
-Below is a short, representative transcript demonstrating the installer flow when a few components are missing and the operator chooses the manual path (no auto-install). Prompts shown are exact prompts produced by the current INSTALL.sh.
+Below is a short, representative transcript demonstrating the installer flow when a few components are missing and the operator chooses the manual path (no auto-install). Prompts shown are exact prompts produced by the current setup.sh.
 
-$ ./skills/headful-browser-vnc/scripts/INSTALL.sh
+$ ./skills/headful-browser-vnc/scripts/setup.sh
 Platform install hints (guidance-only — these commands will NOT be run automatically):
 
 Debian / Ubuntu (apt):
@@ -165,5 +181,3 @@ Skipped automatic install. Please run the printed command manually.
 --- Handling missing: .env ---
 Create template .env? (y/N) y
 Created skills/headful-browser-vnc/.env
-
-

@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  headful-vnc:
+    build: .
+    image: headful-browser-vnc:latest
+    container_name: headful-vnc
+    volumes:
+      - ./out:/opt/headful-browser-vnc/out
+      - ./skills/headful-browser-vnc/.env:/opt/headful-browser-vnc/.env:ro
+    environment:
+      - VNC_DISPLAY=:99
+      - VNC_RESOLUTION=1366x768
+    ports:
+      - "5900:5900" # VNC
+      - "9222:9222" # Chrome remote debugging
+      - "6080:6080" # noVNC (if enabled)
+    restart: unless-stopped
+    tty: true
