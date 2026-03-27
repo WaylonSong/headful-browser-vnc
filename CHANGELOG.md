@@ -1,9 +1,6 @@
 # Changelog
 
-## 0.1.0 - Initial skeleton
-- SKILL.md, README, scripts, templates and smoke test added.
-
-## 0.1.1 - Security & Configuration Hardening
+## 1.0.1 - Security & Configuration Hardening
 - **Security:** Resolved Node script injection vulnerability in DevTools export scripts by using `process.argv` instead of unescaped interpolated string arrays.
 - **Security:** Eliminated `VNC_PASSWORD` environment variable entirely to enforce secure `VNC_PASSFILE` usage. 
 - **Setup:** Renamed `INSTALL.sh` to `setup.sh` to align with standard agent terminology.
