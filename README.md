@@ -1,3 +1,16 @@
+---
+name: headful-browser-vnc
+description: "Headful Chromium with VNC/noVNC operator UI and Chrome CDP exports (cookies, screenshots, outerHTML)."
+required_env:
+  - VNC_PASSFILE
+  - REMOTE_DEBUG_PORT
+  - PROXY_URL
+  - OUT_DIR
+  - ALLOW_CHROME_FORCE_RESTART
+  - CHROME_USER_DATA_DIR
+  - VNC_IMPLEMENTATION
+---
+
 # headful-browser-vnc
 
 Overview
