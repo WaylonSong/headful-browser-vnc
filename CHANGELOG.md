@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - Metadata & Documentation Fixes
+- **Metadata:** Added explicit `required_env` YAML frontmatter to `SKILL.md` to properly communicate required variables to ClawHub registry parsers.
+- **Documentation:** Extensively formatted `SKILL.md` (and `README.md`) using markdown code blocks and inline ticks to improve readability and distinctness of scripts, commands, and environment variables.
+
+
 ## 1.0.1 - Security & Configuration Hardening
 - **Security:** Resolved Node script injection vulnerability in DevTools export scripts by using `process.argv` instead of unescaped interpolated string arrays.
 - **Security:** Eliminated `VNC_PASSWORD` environment variable entirely to enforce secure `VNC_PASSFILE` usage. 
