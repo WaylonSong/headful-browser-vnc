@@ -20,20 +20,23 @@ not add Linux runtime verification. No GitHub release is part of this task.
 - Dependency lockfile version matches package.json. Skill/package/card metadata
   consistently identifies version 2.0.0.
 
-## Not completed here
+## Completed on Linux in GitHub Actions
 
-The full Linux lifecycle test was not run: this host has no Linux Xvfb/x11vnc
-runtime, and its installed Docker application could not start. The smoke script
-correctly exits nonzero on this unsupported host.
+The full `./tests/smoke_test.sh` workflow passed on Ubuntu 24.04 for source
+commit `c78bf337fbf1ebaa263c87e44f9e56d4807b5865`:
+[Linux CI run](https://github.com/WaylonSong/headful-browser-vnc/actions/runs/43182911827).
 
-The supplied Linux test covers sandboxed headful Chrome, authenticated Xvfb,
-process-owned loopback listeners, noVNC serving, per-session isolation, capture,
-cooperative handoff and repeated stop. The GitHub Actions workflow invokes it,
-but that workflow has not been dispatched or observed in this task.
+This includes Python and exporter tests, real Chrome CDP capture, and the
+sandboxed headful Chrome/Xvfb/x11vnc/noVNC lifecycle. The lifecycle test verifies
+authenticated Xvfb, process-owned loopback listeners, two-session isolation,
+capture, cooperative handoff, repeated stop and retained profiles.
 
-Outstanding verification: run `./tests/smoke_test.sh` as a non-root Linux user with the
-documented dependencies, and verify operator interaction through a real VNC
-viewer/noVNC. There is no verified Docker image in this release.
+## Remaining verification limits
+
+The local macOS host does not provide the Linux display/VNC runtime. End-to-end
+Linux verification was performed by the CI run above instead. Interactive use
+through a real VNC viewer/noVNC has not been manually exercised. There is no
+verified Docker image in this release.
 
 ## Deliberate limits
 

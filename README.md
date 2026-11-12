@@ -204,7 +204,8 @@ TEST_CHROME_BIN=/usr/bin/google-chrome npm run test:browser
 On macOS, the real CDP exporter test can use installed Google Chrome; the session
 manager still requires Linux. The full Linux test must run as non-root with all
 runtime dependencies. It fails on missing dependencies instead of suppressing
-errors. The source archive includes a GitHub Actions workflow; it has not been executed here.
+errors. The source archive includes a GitHub Actions workflow; the complete Linux
+smoke test passed in CI. See VALIDATION.md for the run and remaining limits.
 
 ## Migration from 1.0.2
 
