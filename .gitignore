@@ -1,8 +1,7 @@
-# Ignore local environment and backups
 .env
-backups/
-venv/
+node_modules/
+out/
 __pycache__/
 *.pyc
-logs/
-reports/
+.playwright-mcp/
+dist/
