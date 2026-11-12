@@ -1,0 +1,29 @@
+name: Browser session tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth x11vnc x11-utils fluxbox novnc websockify fonts-noto-cjk
+          command -v google-chrome
+      - run: npm ci --ignore-scripts
+      - name: Verify lifecycle and existing-tab capture
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          TEST_CHROME_BIN: /usr/bin/google-chrome
+        run: ./tests/smoke_test.sh
